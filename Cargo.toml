@@ -1,0 +1,11 @@
+[workspace]
+resolver = "3"
+members = ["discord-frontend" , "search-master"]
+exclude = []
+
+[workspace.dependencies]
+
+
+[profile.release]
+strip = false
+debug = true

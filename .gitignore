@@ -1,0 +1,6 @@
+venv/
+dumps/
+data.ms/
+meilisearch
+target/
+.env
