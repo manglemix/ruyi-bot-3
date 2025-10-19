@@ -1,11 +1,13 @@
 use std::io::{Read, Seek};
 
-use docx_rust::{document::{BodyContent, ParagraphContent, RunContent}, DocxFile, DocxResult};
+use docx_rust::{
+    DocxFile, DocxResult,
+    document::{BodyContent, ParagraphContent, RunContent},
+};
 
 pub mod app;
 
 pub const RUYI_FILES: &str = "ruyi-files";
-
 
 pub fn extract_text_docx(reader: impl Read + Seek) -> DocxResult<String> {
     let docx_file = DocxFile::from_reader(reader)?;
@@ -38,10 +40,9 @@ pub fn extract_text_docx(reader: impl Read + Seek) -> DocxResult<String> {
             all_text.push('\n');
         }
     }
-    
+
     Ok(all_text)
 }
-
 
 pub fn extract_text_pdf(buffer: &[u8]) -> Result<String, pdf_extract::OutputError> {
     pdf_extract::extract_text_from_mem(buffer)

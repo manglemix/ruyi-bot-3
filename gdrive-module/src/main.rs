@@ -1,8 +1,10 @@
-use google_drive3::{yup_oauth2, DriveHub, Error};
+use google_drive3::{DriveHub, Error, yup_oauth2};
 
 #[tokio::main]
 async fn main() {
-    rustls::crypto::ring::default_provider().install_default().unwrap();
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .unwrap();
     let secret: yup_oauth2::ApplicationSecret = Default::default();
     // Instantiate the authenticator. It will choose a suitable authentication flow for you,
     // unless you replace  `None` with the desired Flow.

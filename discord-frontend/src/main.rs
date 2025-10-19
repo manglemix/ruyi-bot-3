@@ -5,7 +5,9 @@ use std::sync::OnceLock;
 
 use files_module::RUYI_FILES;
 use rustc_hash::FxHashSet;
-use search_master_interface::{invalidate_message_author_id, send_new_searchable_message, SearchableMessage};
+use search_master_interface::{
+    SearchableMessage, invalidate_message_author_id, send_new_searchable_message,
+};
 use serenity::all::{CreateAttachment, CreateMessage, User};
 use serenity::async_trait;
 use serenity::model::channel::Message;
@@ -31,7 +33,7 @@ macro_rules! unwrap {
     };
     ($expr: expr) => {
         unwrap!($expr, ())
-    }
+    };
 }
 
 #[async_trait]
@@ -39,7 +41,9 @@ impl EventHandler for Handler {
     async fn message(&self, ctx: Context, msg: Message) {
         let Some(msg_str) = msg.content.strip_prefix('!') else {
             let author_id = msg.author.id.get();
-            if msg.author == *self.this_user.get().unwrap() || self.opt_in_users.read().await.contains(&author_id) {
+            if msg.author == *self.this_user.get().unwrap()
+                || self.opt_in_users.read().await.contains(&author_id)
+            {
                 send_new_searchable_message(SearchableMessage::new(author_id, msg.content));
             }
             return;
@@ -59,7 +63,11 @@ impl EventHandler for Handler {
             "file" => {
                 let filename = msg_str.strip_prefix("file ").unwrap().trim();
                 if filename.is_empty() {
-                    unwrap!(msg.channel_id.say(&ctx.http, "`ERROR Expected: !file <filename>`").await);
+                    unwrap!(
+                        msg.channel_id
+                            .say(&ctx.http, "`ERROR Expected: !file <filename>`")
+                            .await
+                    );
                     return;
                 };
                 if filename.contains("..") {
@@ -79,9 +87,21 @@ impl EventHandler for Handler {
                         return;
                     }
                     let data = unwrap!(tokio::fs::read(filepath).await);
-                    unwrap!(msg.channel_id.send_files(&ctx.http, [CreateAttachment::bytes(data, filename)], CreateMessage::new().content("Here it is")).await);
+                    unwrap!(
+                        msg.channel_id
+                            .send_files(
+                                &ctx.http,
+                                [CreateAttachment::bytes(data, filename)],
+                                CreateMessage::new().content("Here it is")
+                            )
+                            .await
+                    );
                 } else if msg.attachments.len() > 1 {
-                    unwrap!(msg.channel_id.say(&ctx.http, "`Expected 0 or 1 attachments`").await);
+                    unwrap!(
+                        msg.channel_id
+                            .say(&ctx.http, "`Expected 0 or 1 attachments`")
+                            .await
+                    );
                     return;
                 } else {
                     let file = msg.attachments.first().unwrap();
@@ -109,7 +129,13 @@ impl EventHandler for Handler {
                         } else if skip > 0 {
                             skip -= 1;
                         } else {
-                            out.push_str(&child.path().strip_prefix(RUYI_FILES).unwrap().to_string_lossy());
+                            out.push_str(
+                                &child
+                                    .path()
+                                    .strip_prefix(RUYI_FILES)
+                                    .unwrap()
+                                    .to_string_lossy(),
+                            );
                             out.push('\n');
                             remaining -= 1;
                             if remaining == 0 {
@@ -129,7 +155,11 @@ impl EventHandler for Handler {
                         write_opt_in_ids(guard.iter().copied()).await;
                     }
                 }
-                unwrap!(msg.channel_id.say(&ctx.http, "`Added user id to opt in list`").await);
+                unwrap!(
+                    msg.channel_id
+                        .say(&ctx.http, "`Added user id to opt in list`")
+                        .await
+                );
             }
             "opt-out" => {
                 {
@@ -139,7 +169,11 @@ impl EventHandler for Handler {
                     }
                 }
                 invalidate_message_author_id(msg.author.id.get());
-                unwrap!(msg.channel_id.say(&ctx.http, "`Removed user id from opt in list`").await);
+                unwrap!(
+                    msg.channel_id
+                        .say(&ctx.http, "`Removed user id from opt in list`")
+                        .await
+                );
             }
             _ => {
                 unwrap!(msg.channel_id.say(&ctx.http, "`Unknown command`").await);
@@ -188,11 +222,13 @@ async fn main() {
     }
 
     // Create a new instance of the Client, logging in as a bot.
-    let mut client =
-        Client::builder(&token, intents).event_handler(Handler {
+    let mut client = Client::builder(&token, intents)
+        .event_handler(Handler {
             opt_in_users: RwLock::new(opt_in_users),
-            this_user: OnceLock::new()
-        }).await.expect("Err creating client");
+            this_user: OnceLock::new(),
+        })
+        .await
+        .expect("Err creating client");
 
     // Start listening for events by starting a single shard
     if let Err(why) = client.start().await {

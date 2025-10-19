@@ -7,7 +7,6 @@ const RUYI_GITS: &str = "ruyi-gits";
 
 static UPDATE_LOCK: Mutex<()> = Mutex::new(());
 
-
 pub fn update_gits() {
     std::thread::spawn(|| {
         let _guard = UPDATE_LOCK.lock().unwrap();

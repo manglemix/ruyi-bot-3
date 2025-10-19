@@ -3,15 +3,16 @@ use search_master_interface::init_documents_senders;
 use tokio::select;
 use tracing::{debug, error};
 
-
 pub fn initialize() {
     let (
         mut new_searchable_doc,
         mut invalidated_searchable_doc,
         mut new_searchable_message,
-        mut invalidated_message_author_id
+        mut invalidated_message_author_id,
     ) = init_documents_senders();
-    let client = meilisearch_sdk::client::Client::new("http://localhost:7700", Option::<String>::None).unwrap();
+    let client =
+        meilisearch_sdk::client::Client::new("http://localhost:7700", Option::<String>::None)
+            .unwrap();
     let doc_index = client.index("docs");
     let msg_index = client.index("messages");
 

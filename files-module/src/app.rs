@@ -1,17 +1,25 @@
 use std::{fs::File, path::Path};
 
-use notify::{event::{CreateKind, ModifyKind, RemoveKind, RenameMode}, Event, EventKind, RecursiveMode, Watcher};
-use search_master_interface::{invalidate_searchable_document, send_new_searchable_document, SearchableDocument, SearchableDocumentId, SearchableRoot};
+use notify::{
+    Event, EventKind, RecursiveMode, Watcher,
+    event::{CreateKind, ModifyKind, RemoveKind, RenameMode},
+};
+use search_master_interface::{
+    SearchableDocument, SearchableDocumentId, SearchableRoot, invalidate_searchable_document,
+    send_new_searchable_document,
+};
 use tracing::{debug, error, info};
 
-use crate::{extract_text_docx, extract_text_pdf, RUYI_FILES};
+use crate::{RUYI_FILES, extract_text_docx, extract_text_pdf};
 
 pub fn start_watcher() -> notify::Result<()> {
     let (tx, rx) = std::sync::mpsc::channel::<notify::Result<Event>>();
 
     let mut watcher = notify::recommended_watcher(tx).expect("Expected watcher to initialize");
 
-    watcher.watch(Path::new(RUYI_FILES), RecursiveMode::Recursive).expect("Expected ruyi-files to be watchable");
+    watcher
+        .watch(Path::new(RUYI_FILES), RecursiveMode::Recursive)
+        .expect("Expected ruyi-files to be watchable");
 
     if let Ok(entries) = std::fs::read_dir(RUYI_FILES) {
         for entry in entries.flatten() {
@@ -43,7 +51,8 @@ pub fn start_watcher() -> notify::Result<()> {
             };
 
             match event.kind {
-                EventKind::Modify(ModifyKind::Name(RenameMode::From)) | EventKind::Remove(RemoveKind::File) => {
+                EventKind::Modify(ModifyKind::Name(RenameMode::From))
+                | EventKind::Remove(RemoveKind::File) => {
                     for path in event.paths {
                         if path.is_dir() {
                             debug!("Folder {path:?} was renamed/deleted");
@@ -53,12 +62,17 @@ pub fn start_watcher() -> notify::Result<()> {
                         let Some(filename) = path.file_name().map(|x| x.to_str()).flatten() else {
                             continue;
                         };
-                        invalidate_searchable_document(SearchableDocumentId::new(filename, &SearchableRoot::Files { folder_path: path.parent().unwrap().into() }));
+                        invalidate_searchable_document(SearchableDocumentId::new(
+                            filename,
+                            &SearchableRoot::Files {
+                                folder_path: path.parent().unwrap().into(),
+                            },
+                        ));
                     }
                     continue;
                 }
                 EventKind::Create(CreateKind::File) | EventKind::Modify(_) => {}
-                _ => continue
+                _ => continue,
             }
 
             for path in event.paths {
@@ -132,15 +146,13 @@ pub fn feed_file_with_base(path: &Path, base: &str) {
             return;
         }
     }
-    send_new_searchable_document(
-        SearchableDocument::new(
-            path.file_name()
-                .expect("Expected filename to exist")
-                .to_str()
-                .expect("Expected ascii filename")
-                .to_string(),
-            SearchableRoot::new_file(path, base.as_ref()),
-            contents
-        )
-    );
+    send_new_searchable_document(SearchableDocument::new(
+        path.file_name()
+            .expect("Expected filename to exist")
+            .to_str()
+            .expect("Expected ascii filename")
+            .to_string(),
+        SearchableRoot::new_file(path, base.as_ref()),
+        contents,
+    ));
 }
