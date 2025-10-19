@@ -4,3 +4,5 @@ data.ms/
 meilisearch
 target/
 .env
+
+ruyi-files/
