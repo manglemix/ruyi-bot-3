@@ -4,3 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+meilisearch-sdk = "0.30.0"
+serde.workspace = true
+gdrive-module.path = "../gdrive-module"
