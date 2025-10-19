@@ -4,21 +4,29 @@ use notify::{event::{CreateKind, ModifyKind, RemoveKind, RenameMode}, Event, Eve
 use search_master_interface::{invalidate_searchable_document, send_new_searchable_document, SearchableDocument, SearchableDocumentId, SearchableRoot};
 use tracing::{debug, error, info};
 
-use crate::{extract_text_docx, extract_text_pdf};
+use crate::{extract_text_docx, extract_text_pdf, RUYI_FILES};
 
 pub fn start_watcher() -> notify::Result<()> {
     let (tx, rx) = std::sync::mpsc::channel::<notify::Result<Event>>();
 
     let mut watcher = notify::recommended_watcher(tx).expect("Expected watcher to initialize");
 
-    watcher.watch(Path::new("ruyi-files"), RecursiveMode::Recursive).expect("Expected ruyi-files to be watchable");
+    watcher.watch(Path::new(RUYI_FILES), RecursiveMode::Recursive).expect("Expected ruyi-files to be watchable");
 
-    if let Ok(entries) = std::fs::read_dir("ruyi-files") {
+    if let Ok(entries) = std::fs::read_dir(RUYI_FILES) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_file() {
                 feed_file(&path);
             }
+        }
+    }
+
+    for result in walkdir::WalkDir::new(RUYI_FILES) {
+        let entry = result.unwrap();
+        let path = entry.path();
+        if path.is_file() {
+            feed_file(&path);
         }
     }
 
@@ -45,7 +53,7 @@ pub fn start_watcher() -> notify::Result<()> {
                         let Some(filename) = path.file_name().map(|x| x.to_str()).flatten() else {
                             continue;
                         };
-                        invalidate_searchable_document(SearchableDocumentId::new(filename, &SearchableRoot::Files));
+                        invalidate_searchable_document(SearchableDocumentId::new(filename, &SearchableRoot::Files { folder_path: path.parent().unwrap().into() }));
                     }
                     continue;
                 }
@@ -67,10 +75,14 @@ pub fn start_watcher() -> notify::Result<()> {
     Ok(())
 }
 
-pub fn feed_file(path: &Path) {
+pub(crate) fn feed_file(path: &Path) {
+    feed_file_with_base(path, RUYI_FILES);
+}
+
+pub fn feed_file_with_base(path: &Path, base: &str) {
     let contents;
     match path.extension().map(|x| x.to_str()).flatten() {
-        Some("txt" | "md") => {
+        Some("txt" | "md" | "rs" | "py") => {
             contents = match std::fs::read_to_string(path) {
                 Ok(x) => x,
                 Err(e) => {
@@ -111,12 +123,12 @@ pub fn feed_file(path: &Path) {
                 }
             };
         }
-        Some(ext) => {
-            error!("Unknown file extension {ext} for {path:?}");
+        Some(".gitignore") | None => {
+            debug!("File {path:?} (no extension) was touched");
             return;
         }
-        None => {
-            debug!("File {path:?} (no extension) was touched");
+        Some(ext) => {
+            error!("Unknown file extension {ext} for {path:?}");
             return;
         }
     }
@@ -127,7 +139,7 @@ pub fn feed_file(path: &Path) {
                 .to_str()
                 .expect("Expected ascii filename")
                 .to_string(),
-            SearchableRoot::Files,
+            SearchableRoot::new_file(path, base.as_ref()),
             contents
         )
     );

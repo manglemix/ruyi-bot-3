@@ -1,0 +1,9 @@
+[package]
+name = "git-module"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+files-module.workspace = true
+tracing.workspace = true
+walkdir = "2.5.0"

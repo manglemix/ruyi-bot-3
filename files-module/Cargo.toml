@@ -9,3 +9,4 @@ notify = "8.2.0"
 pdf-extract = "0.10.0"
 tracing.workspace = true
 search-master-interface.workspace = true
+walkdir = "2.5.0"

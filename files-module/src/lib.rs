@@ -4,6 +4,8 @@ use docx_rust::{document::{BodyContent, ParagraphContent, RunContent}, DocxFile,
 
 pub mod app;
 
+pub const RUYI_FILES: &str = "ruyi-files";
+
 
 pub fn extract_text_docx(reader: impl Read + Seek) -> DocxResult<String> {
     let docx_file = DocxFile::from_reader(reader)?;

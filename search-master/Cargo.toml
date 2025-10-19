@@ -7,6 +7,7 @@ edition = "2024"
 meilisearch-sdk = "0.30.0"
 # serde.workspace = true
 gdrive-module.path = "../gdrive-module"
+git-module.path = "../git-module"
 files-module.workspace = true
 search-master-interface.workspace = true
 tokio.workspace = true

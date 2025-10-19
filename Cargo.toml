@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["discord-frontend" , "files-module", "gdrive-module", "search-master", "search-master-interface"]
+members = ["discord-frontend" , "files-module", "gdrive-module", "git-module", "search-master", "search-master-interface"]
 exclude = []
 
 [workspace.dependencies]

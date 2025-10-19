@@ -6,3 +6,5 @@ target/
 .env
 
 ruyi-files/
+opt-in.txt
+ruyi-gits/
