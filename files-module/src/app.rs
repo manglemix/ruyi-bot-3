@@ -1,35 +1,12 @@
 use std::{fs::File, path::Path};
-
-use notify::{
-    Event, EventKind, RecursiveMode, Watcher,
-    event::{CreateKind, ModifyKind, RemoveKind, RenameMode},
-};
 use search_master_interface::{
-    SearchableDocument, SearchableDocumentId, SearchableRoot, invalidate_searchable_document,
-    send_new_searchable_document,
+    SearchableDocument, SearchableRoot, send_new_searchable_document,
 };
-use tracing::{debug, error, info};
+use tracing::error;
 
 use crate::{RUYI_FILES, extract_text_docx, extract_text_pdf};
 
-pub fn start_watcher() -> notify::Result<()> {
-    let (tx, rx) = std::sync::mpsc::channel::<notify::Result<Event>>();
-
-    let mut watcher = notify::recommended_watcher(tx).expect("Expected watcher to initialize");
-
-    watcher
-        .watch(Path::new(RUYI_FILES), RecursiveMode::Recursive)
-        .expect("Expected ruyi-files to be watchable");
-
-    if let Ok(entries) = std::fs::read_dir(RUYI_FILES) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() {
-                feed_file(&path);
-            }
-        }
-    }
-
+pub fn initialize() {
     for result in walkdir::WalkDir::new(RUYI_FILES) {
         let entry = result.unwrap();
         let path = entry.path();
@@ -37,71 +14,32 @@ pub fn start_watcher() -> notify::Result<()> {
             feed_file(&path);
         }
     }
-
-    std::thread::spawn(|| {
-        let _watcher = watcher;
-        info!("Files Watcher started");
-        for res in rx {
-            let event = match res {
-                Ok(x) => x,
-                Err(e) => {
-                    error!("File watch error: {:?}", e);
-                    continue;
-                }
-            };
-
-            match event.kind {
-                EventKind::Modify(ModifyKind::Name(RenameMode::From))
-                | EventKind::Remove(RemoveKind::File) => {
-                    for path in event.paths {
-                        if path.is_dir() {
-                            debug!("Folder {path:?} was renamed/deleted");
-                            continue;
-                        }
-
-                        let Some(filename) = path.file_name().map(|x| x.to_str()).flatten() else {
-                            continue;
-                        };
-                        invalidate_searchable_document(SearchableDocumentId::new(
-                            filename,
-                            &SearchableRoot::Files {
-                                folder_path: path.parent().unwrap().into(),
-                            },
-                        ));
-                    }
-                    continue;
-                }
-                EventKind::Create(CreateKind::File) | EventKind::Modify(_) => {}
-                _ => continue,
-            }
-
-            for path in event.paths {
-                if path.is_dir() {
-                    debug!("Folder {path:?} was touched");
-                    continue;
-                }
-
-                feed_file(&path);
-            }
-        }
-    });
-
-    Ok(())
 }
 
 pub(crate) fn feed_file(path: &Path) {
-    feed_file_with_base(path, RUYI_FILES);
+    let Some(contents) = extract_contents(path) else {
+        return;
+    };
+    send_new_searchable_document(SearchableDocument::new(
+        path.file_name()
+            .expect("Expected filename to exist")
+            .to_str()
+            .expect("Expected ascii filename")
+            .to_string(),
+        SearchableRoot::new_file(path, RUYI_FILES.as_ref()),
+        contents,
+    ));
 }
 
-pub fn feed_file_with_base(path: &Path, base: &str) {
+pub fn extract_contents(path: &Path) -> Option<String> {
     let contents;
     match path.extension().map(|x| x.to_str()).flatten() {
-        Some("txt" | "md" | "rs" | "py") => {
+        Some("txt" | "md" | "rs" | "py" | "toml" | "json" | "cpp" | "bazel" | "ron" | "xml" | "h" | "jsonc" | "hpp" | "sql" | "c") => {
             contents = match std::fs::read_to_string(path) {
                 Ok(x) => x,
                 Err(e) => {
                     error!("Failed to read: {path:?}: {e}");
-                    return;
+                    return None;
                 }
             };
         }
@@ -110,14 +48,14 @@ pub fn feed_file_with_base(path: &Path, base: &str) {
                 Ok(x) => x,
                 Err(e) => {
                     error!("Failed to read: {path:?}: {e}");
-                    return;
+                    return None;
                 }
             };
             contents = match extract_text_pdf(&bytes) {
                 Ok(x) => x,
                 Err(e) => {
                     error!("Failed to read: {path:?}: {e}");
-                    return;
+                    return None;
                 }
             };
         }
@@ -126,33 +64,24 @@ pub fn feed_file_with_base(path: &Path, base: &str) {
                 Ok(x) => x,
                 Err(e) => {
                     error!("Failed to read: {path:?}: {e}");
-                    return;
+                    return None;
                 }
             };
             contents = match extract_text_docx(docx) {
                 Ok(x) => x,
                 Err(e) => {
                     error!("Failed to read: {path:?}: {e}");
-                    return;
+                    return None;
                 }
             };
         }
-        Some(".gitignore") | None => {
-            debug!("File {path:?} (no extension) was touched");
-            return;
+        Some("gitignore" | "lock" | "obj" | "mtl" | "png" | "a" | "stl") | None => {
+            return None;
         }
         Some(ext) => {
             error!("Unknown file extension {ext} for {path:?}");
-            return;
+            return None;
         }
     }
-    send_new_searchable_document(SearchableDocument::new(
-        path.file_name()
-            .expect("Expected filename to exist")
-            .to_str()
-            .expect("Expected ascii filename")
-            .to_string(),
-        SearchableRoot::new_file(path, base.as_ref()),
-        contents,
-    ));
+    Some(contents)
 }

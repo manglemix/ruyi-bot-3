@@ -1,6 +1,7 @@
-use std::sync::Mutex;
+use std::{path::Path, sync::Mutex};
 
-use files_module::app::feed_file_with_base;
+use files_module::app::extract_contents;
+use search_master_interface::{send_new_searchable_github_document, SearchableDocument, SearchableRoot};
 use tracing::error;
 
 const RUYI_GITS: &str = "ruyi-gits";
@@ -30,21 +31,40 @@ pub fn update_gits() {
                 .output()
                 .unwrap()
                 .stdout;
-            let origin = String::from_utf8(origin).unwrap();
+            let origin = String::from_utf8(origin).unwrap().trim().to_string();
             let main_branch = std::process::Command::new("git")
                 .current_dir(entry.path())
                 .args(["branch", "--show-current"])
                 .output()
                 .unwrap()
                 .stdout;
-            let main_branch = String::from_utf8(main_branch).unwrap();
+            let main_branch = String::from_utf8(main_branch).unwrap().trim().to_string();
 
-            for result in walkdir::WalkDir::new(entry.path()) {
-                let entry = result.unwrap();
-                let path = entry.path();
-                if path.is_file() {
-                    feed_file_with_base(&path, RUYI_GITS);
+            let files = std::process::Command::new("git")
+                .current_dir(entry.path())
+                .args(["ls-tree", "-r", "HEAD", "--name-only"])
+                .output()
+                .unwrap()
+                .stdout;
+            let files = String::from_utf8(files).unwrap();
+
+            for path in files.lines() {
+                let path = entry.path().join(path);
+                if !path.is_file() {
+                    continue;
                 }
+                let Some(contents) = extract_contents(&path) else {
+                    continue;
+                };
+                send_new_searchable_github_document(SearchableDocument::new(
+                    path.file_name()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .to_string(),
+                    SearchableRoot::new_github_file(&path, &Path::new(RUYI_GITS).join(entry.path().file_name().unwrap()), origin.clone(), main_branch.clone()),
+                    contents,
+                ));
             }
         }
     });

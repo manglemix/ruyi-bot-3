@@ -75,40 +75,24 @@ impl EventHandler for Handler {
                     return;
                 };
                 let filepath = Path::new(RUYI_FILES).join(filename);
-
-                if msg.attachments.is_empty() {
-                    // Reading a file
-                    if !filepath.exists() {
-                        unwrap!(msg.channel_id.say(&ctx.http, "`Does not exist`").await);
-                        return;
-                    }
-                    if filepath.is_dir() {
-                        unwrap!(msg.channel_id.say(&ctx.http, "`Is a folder`").await);
-                        return;
-                    }
-                    let data = unwrap!(tokio::fs::read(filepath).await);
-                    unwrap!(
-                        msg.channel_id
-                            .send_files(
-                                &ctx.http,
-                                [CreateAttachment::bytes(data, filename)],
-                                CreateMessage::new().content("Here it is")
-                            )
-                            .await
-                    );
-                } else if msg.attachments.len() > 1 {
-                    unwrap!(
-                        msg.channel_id
-                            .say(&ctx.http, "`Expected 0 or 1 attachments`")
-                            .await
-                    );
+                if !filepath.exists() {
+                    unwrap!(msg.channel_id.say(&ctx.http, "`Does not exist`").await);
                     return;
-                } else {
-                    let file = msg.attachments.first().unwrap();
-                    unwrap!(tokio::fs::create_dir_all(filepath.parent().unwrap()).await);
-                    unwrap!(tokio::fs::write(filepath, unwrap!(file.download().await)).await);
-                    unwrap!(msg.channel_id.say(&ctx.http, "`Saved`").await);
                 }
+                if filepath.is_dir() {
+                    unwrap!(msg.channel_id.say(&ctx.http, "`Is a folder`").await);
+                    return;
+                }
+                let data = unwrap!(tokio::fs::read(filepath).await);
+                unwrap!(
+                    msg.channel_id
+                        .send_files(
+                            &ctx.http,
+                            [CreateAttachment::bytes(data, filename)],
+                            CreateMessage::new().content("Here it is")
+                        )
+                        .await
+                );
             }
             "files" => {
                 let page_idx_str = msg_iter.next().unwrap_or("0");

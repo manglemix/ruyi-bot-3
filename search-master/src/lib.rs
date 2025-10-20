@@ -1,25 +1,21 @@
 use meilisearch_sdk::documents::DocumentDeletionQuery;
-use search_master_interface::init_documents_senders;
-use tokio::select;
+use search_master_interface::{init_documents_senders, DocumentReceivers};
+use tokio::{select, task::block_in_place};
 use tracing::{debug, error};
 
 pub fn initialize() {
-    let (
-        mut new_searchable_doc,
-        mut invalidated_searchable_doc,
-        mut new_searchable_message,
-        mut invalidated_message_author_id,
-    ) = init_documents_senders();
+    let DocumentReceivers { mut new_searchable_document, new_searchable_github_document: mut new_searchable_git_document, mut new_searchable_message, mut invalidated_message_author_id } = init_documents_senders();
     let client =
         meilisearch_sdk::client::Client::new("http://localhost:7700", Option::<String>::None)
             .unwrap();
     let doc_index = client.index("docs");
+    let githubs_index = client.index("githubs");
     let msg_index = client.index("messages");
 
     tokio::spawn(async move {
         loop {
             select! {
-                opt = new_searchable_doc.recv() => {
+                opt = new_searchable_document.recv() => {
                     let Some(doc) = opt else { break; };
                     if let Err(e) = doc_index.add_or_replace(&[&doc], Some("id")).await {
                         error!("Failed to add {} to meilisearch: {e}", doc.filename());
@@ -27,12 +23,12 @@ pub fn initialize() {
                         debug!("Added {} to meilisearch", doc.filename());
                     }
                 }
-                opt = invalidated_searchable_doc.recv() => {
+                opt = new_searchable_git_document.recv() => {
                     let Some(doc) = opt else { break; };
-                    if let Err(e) = doc_index.delete_document(&doc.0).await {
-                        error!("Failed to delete {} from meilisearch: {e}", doc.0);
+                    if let Err(e) = githubs_index.add_or_replace(&[&doc], Some("id")).await {
+                        error!("Failed to add {} to meilisearch: {e}", doc.filename());
                     } else {
-                        debug!("Deleted {} from meilisearch", doc.0);
+                        debug!("Added {} to meilisearch", doc.filename());
                     }
                 }
                 opt = new_searchable_message.recv() => {
@@ -65,6 +61,30 @@ pub fn initialize() {
         }
     });
 
-    files_module::app::start_watcher().expect("Expected files watcher to initialize");
-    git_module::update_gits();
+    tokio::spawn(async {
+        delete_all_documents().await;
+        delete_all_githubs().await;
+        block_in_place(|| {
+            files_module::app::initialize();
+            git_module::update_gits();
+        });
+    });
+}
+
+pub async fn delete_all_documents() {
+    let client =
+        meilisearch_sdk::client::Client::new("http://localhost:7700", Option::<String>::None)
+            .unwrap();
+    if let Err(e) = client.delete_index("docs").await {
+        tracing::error!("{e}");
+    }
+}
+
+pub async fn delete_all_githubs() {
+    let client =
+        meilisearch_sdk::client::Client::new("http://localhost:7700", Option::<String>::None)
+            .unwrap();
+    if let Err(e) = client.delete_index("githubs").await {
+        tracing::error!("{e}");
+    }
 }

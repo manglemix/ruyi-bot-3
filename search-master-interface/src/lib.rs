@@ -9,39 +9,40 @@ use sha2::{Digest, Sha256};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 static NEW_SEARCHABLE_DOCUMENT: OnceLock<UnboundedSender<SearchableDocument>> = OnceLock::new();
+static NEW_SEARCHABLE_GITHUB_DOCUMENT: OnceLock<UnboundedSender<SearchableDocument>> = OnceLock::new();
 static NEW_SEARCHABLE_MESSAGE: OnceLock<UnboundedSender<SearchableMessage>> = OnceLock::new();
 static INVALIDATED_MESSAGE_AUTHOR_ID: OnceLock<UnboundedSender<u64>> = OnceLock::new();
-static INVALIDATED_SEARCHABLE_DOCUMENT: OnceLock<UnboundedSender<InvalidatedSearchableDocument>> =
-    OnceLock::new();
 
-pub struct InvalidatedSearchableDocument(pub SearchableDocumentId);
-
-pub fn invalidate_searchable_document(id: SearchableDocumentId) {
-    let _ = INVALIDATED_SEARCHABLE_DOCUMENT
-        .get()
-        .unwrap()
-        .send(InvalidatedSearchableDocument(id));
+pub struct DocumentReceivers {
+    pub new_searchable_document: UnboundedReceiver<SearchableDocument>,
+    pub new_searchable_github_document: UnboundedReceiver<SearchableDocument>,
+    pub new_searchable_message: UnboundedReceiver<SearchableMessage>,
+    pub invalidated_message_author_id: UnboundedReceiver<u64>,
 }
 
-pub fn init_documents_senders() -> (
-    UnboundedReceiver<SearchableDocument>,
-    UnboundedReceiver<InvalidatedSearchableDocument>,
-    UnboundedReceiver<SearchableMessage>,
-    UnboundedReceiver<u64>,
-) {
-    let (tx, rx1) = tokio::sync::mpsc::unbounded_channel();
+pub fn init_documents_senders() -> DocumentReceivers {
+    let (tx, new_searchable_document) = tokio::sync::mpsc::unbounded_channel();
     NEW_SEARCHABLE_DOCUMENT.set(tx).unwrap();
-    let (tx, rx2) = tokio::sync::mpsc::unbounded_channel();
-    INVALIDATED_SEARCHABLE_DOCUMENT.set(tx).unwrap();
-    let (tx, rx3) = tokio::sync::mpsc::unbounded_channel();
+    let (tx, new_searchable_git_document) = tokio::sync::mpsc::unbounded_channel();
+    NEW_SEARCHABLE_GITHUB_DOCUMENT.set(tx).unwrap();
+    let (tx, new_searchable_message) = tokio::sync::mpsc::unbounded_channel();
     NEW_SEARCHABLE_MESSAGE.set(tx).unwrap();
-    let (tx, rx4) = tokio::sync::mpsc::unbounded_channel();
+    let (tx, invalidated_message_author_id) = tokio::sync::mpsc::unbounded_channel();
     INVALIDATED_MESSAGE_AUTHOR_ID.set(tx).unwrap();
-    (rx1, rx2, rx3, rx4)
+    DocumentReceivers {
+        new_searchable_document,
+        new_searchable_github_document: new_searchable_git_document,
+        new_searchable_message,
+        invalidated_message_author_id,
+    }
 }
 
 pub fn send_new_searchable_document(doc: SearchableDocument) {
     let _ = NEW_SEARCHABLE_DOCUMENT.get().unwrap().send(doc);
+}
+
+pub fn send_new_searchable_github_document(doc: SearchableDocument) {
+    let _ = NEW_SEARCHABLE_GITHUB_DOCUMENT.get().unwrap().send(doc);
 }
 
 pub fn send_new_searchable_message(msg: SearchableMessage) {
@@ -94,6 +95,15 @@ impl SearchableDocument {
             SearchableRoot::Files {
                 folder_path: path.into(),
             }
+        } else if let Some(mut remaining) = self.root.strip_prefix("github") {
+            remaining = remaining.strip_prefix('(').unwrap();
+            let (metadata, path) = remaining.split_at(remaining.find(')').unwrap());
+            let (origin, branch) = metadata.split_at(metadata.find(';').unwrap());
+            SearchableRoot::GitHub {
+                origin: origin.into(),
+                branch: branch.into(),
+                folder_path: path.into()
+            }
         } else {
             let root = self.root.strip_prefix("gdrive://").unwrap();
             let (drive_name, path) = root.split_at(root.find('/').unwrap());
@@ -134,6 +144,20 @@ impl SearchableRoot {
                 .into(),
         }
     }
+    pub fn new_github_file(path: &Path, base: &Path, origin: String, branch: String) -> Self {
+        Self::GitHub {
+            origin,
+            branch,
+            folder_path: path
+                .canonicalize()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .strip_prefix(base.canonicalize().unwrap())
+                .unwrap()
+                .into(),
+        }
+    }
 }
 
 impl Display for SearchableRoot {
@@ -146,11 +170,12 @@ impl Display for SearchableRoot {
         match self {
             SearchableRoot::GitHub {
                 origin,
+                branch,
                 folder_path,
             } => write!(
                 f,
                 "{}",
-                format!("file://{}/", folder_path!(folder_path)).replace("///", "//")
+                format!("github({origin};{branch})://{}/", folder_path!(folder_path)).replace("///", "//")
             ),
             SearchableRoot::Files { folder_path } => write!(
                 f,
