@@ -10,7 +10,5 @@ tracing.workspace = true
 tokio.workspace = true
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 search-master.path = "../search-master"
-files-module.workspace = true
 rustc-hash = "2.1.1"
-# parking_lot = "0.12.5"
 search-master-interface.workspace = true

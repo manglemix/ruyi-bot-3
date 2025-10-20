@@ -1,3 +1,5 @@
+use std::{sync::{Mutex, OnceLock}, time::{Duration, Instant}};
+
 use meilisearch_sdk::documents::DocumentDeletionQuery;
 use search_master_interface::{init_documents_senders, DocumentReceivers};
 use tokio::{select, task::block_in_place};
@@ -61,30 +63,40 @@ pub fn initialize() {
         }
     });
 
+    update_githubs();
+}
+
+// pub async fn delete_all_documents() {
+//     let client =
+//         meilisearch_sdk::client::Client::new("http://localhost:7700", Option::<String>::None)
+//             .unwrap();
+//     if let Err(e) = client.delete_index("docs").await {
+//         tracing::error!("{e}");
+//     }
+// }
+
+static LAST_GITHUB_UPDATE: OnceLock<Mutex<Instant>> = OnceLock::new();
+const MINIMUM_GITHUB_UPDATE_DURATION: Duration = Duration::from_secs(1800);
+
+pub fn update_githubs() {
     tokio::spawn(async {
-        delete_all_documents().await;
-        delete_all_githubs().await;
+        if let Some(mutex) = LAST_GITHUB_UPDATE.get() {
+            let mut guard = mutex.lock().unwrap();
+            if guard.elapsed() < MINIMUM_GITHUB_UPDATE_DURATION {
+                return;
+            }
+            *guard = Instant::now();
+        } else {
+            let _ = LAST_GITHUB_UPDATE.set(Mutex::new(Instant::now()));
+        }
+        let client =
+            meilisearch_sdk::client::Client::new("http://localhost:7700", Option::<String>::None)
+                .unwrap();
+        if let Err(e) = client.delete_index("githubs").await {
+            tracing::error!("{e}");
+        }
         block_in_place(|| {
-            files_module::app::initialize();
             git_module::update_gits();
         });
     });
-}
-
-pub async fn delete_all_documents() {
-    let client =
-        meilisearch_sdk::client::Client::new("http://localhost:7700", Option::<String>::None)
-            .unwrap();
-    if let Err(e) = client.delete_index("docs").await {
-        tracing::error!("{e}");
-    }
-}
-
-pub async fn delete_all_githubs() {
-    let client =
-        meilisearch_sdk::client::Client::new("http://localhost:7700", Option::<String>::None)
-            .unwrap();
-    if let Err(e) = client.delete_index("githubs").await {
-        tracing::error!("{e}");
-    }
 }

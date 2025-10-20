@@ -5,8 +5,6 @@ use docx_rust::{
     document::{BodyContent, ParagraphContent, RunContent},
 };
 
-pub mod app;
-
 pub const RUYI_FILES: &str = "ruyi-files";
 
 pub fn extract_text_docx(reader: impl Read + Seek) -> DocxResult<String> {
@@ -46,4 +44,63 @@ pub fn extract_text_docx(reader: impl Read + Seek) -> DocxResult<String> {
 
 pub fn extract_text_pdf(buffer: &[u8]) -> Result<String, pdf_extract::OutputError> {
     pdf_extract::extract_text_from_mem(buffer)
+}
+
+use std::{fs::File, path::Path};
+use tracing::error;
+
+
+pub fn extract_contents(path: &Path) -> Option<String> {
+    let contents;
+    match path.extension().map(|x| x.to_str()).flatten() {
+        Some("txt" | "md" | "rs" | "py" | "toml" | "json" | "cpp" | "bazel" | "ron" | "xml" | "h" | "jsonc" | "hpp" | "sql" | "c") => {
+            contents = match std::fs::read_to_string(path) {
+                Ok(x) => x,
+                Err(e) => {
+                    error!("Failed to read: {path:?}: {e}");
+                    return None;
+                }
+            };
+        }
+        Some("pdf") => {
+            let bytes = match std::fs::read(path) {
+                Ok(x) => x,
+                Err(e) => {
+                    error!("Failed to read: {path:?}: {e}");
+                    return None;
+                }
+            };
+            contents = match extract_text_pdf(&bytes) {
+                Ok(x) => x,
+                Err(e) => {
+                    error!("Failed to read: {path:?}: {e}");
+                    return None;
+                }
+            };
+        }
+        Some("docx") => {
+            let docx = match File::open(path) {
+                Ok(x) => x,
+                Err(e) => {
+                    error!("Failed to read: {path:?}: {e}");
+                    return None;
+                }
+            };
+            contents = match extract_text_docx(docx) {
+                Ok(x) => x,
+                Err(e) => {
+                    error!("Failed to read: {path:?}: {e}");
+                    return None;
+                }
+            };
+        }
+        Some("gitignore" | "lock" | "obj" | "mtl" | "png" | "a" | "stl") | None => {
+            return None;
+        }
+        Some(ext) => {
+            error!("Unknown file extension {ext} for {path:?}");
+            return None;
+        }
+    }
+    Some(contents)
 }

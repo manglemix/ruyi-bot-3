@@ -1,6 +1,6 @@
 use std::{path::Path, sync::Mutex};
 
-use files_module::app::extract_contents;
+use files_module::extract_contents;
 use search_master_interface::{send_new_searchable_github_document, SearchableDocument, SearchableRoot};
 use tracing::error;
 
@@ -16,13 +16,13 @@ pub fn update_gits() {
             if !entry.path().is_dir() {
                 continue;
             }
-            let status = std::process::Command::new("git")
+            let output = std::process::Command::new("git")
                 .current_dir(entry.path())
                 .args(["pull"])
-                .status()
+                .output()
                 .unwrap();
-            if !status.success() {
-                error!("git pull failed: {status}");
+            if !output.status.success() {
+                error!("git pull failed: {}", output.status);
                 continue;
             }
             let origin = std::process::Command::new("git")

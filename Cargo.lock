@@ -522,7 +522,6 @@ name = "discord-frontend"
 version = "0.1.0"
 dependencies = [
  "dotenvy",
- "files-module",
  "rustc-hash",
  "search-master",
  "search-master-interface",
@@ -647,9 +646,7 @@ version = "0.1.0"
 dependencies = [
  "docx-rust",
  "pdf-extract",
- "search-master-interface",
  "tracing",
- "walkdir",
 ]
 
 [[package]]

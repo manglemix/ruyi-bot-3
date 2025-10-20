@@ -1,14 +1,12 @@
-use std::collections::VecDeque;
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::OnceLock;
 
-use files_module::RUYI_FILES;
 use rustc_hash::FxHashSet;
 use search_master_interface::{
     SearchableMessage, invalidate_message_author_id, send_new_searchable_message,
 };
-use serenity::all::{CreateAttachment, CreateMessage, User};
+use serenity::all::User;
 use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::prelude::*;
@@ -59,78 +57,6 @@ impl EventHandler for Handler {
         match cmd {
             "ping" | "Ping" => {
                 unwrap!(msg.channel_id.say(&ctx.http, "Pong!").await);
-            }
-            "file" => {
-                let filename = msg_str.strip_prefix("file ").unwrap().trim();
-                if filename.is_empty() {
-                    unwrap!(
-                        msg.channel_id
-                            .say(&ctx.http, "`ERROR Expected: !file <filename>`")
-                            .await
-                    );
-                    return;
-                };
-                if filename.contains("..") {
-                    unwrap!(msg.channel_id.say(&ctx.http, "`Invalid filename`").await);
-                    return;
-                };
-                let filepath = Path::new(RUYI_FILES).join(filename);
-                if !filepath.exists() {
-                    unwrap!(msg.channel_id.say(&ctx.http, "`Does not exist`").await);
-                    return;
-                }
-                if filepath.is_dir() {
-                    unwrap!(msg.channel_id.say(&ctx.http, "`Is a folder`").await);
-                    return;
-                }
-                let data = unwrap!(tokio::fs::read(filepath).await);
-                unwrap!(
-                    msg.channel_id
-                        .send_files(
-                            &ctx.http,
-                            [CreateAttachment::bytes(data, filename)],
-                            CreateMessage::new().content("Here it is")
-                        )
-                        .await
-                );
-            }
-            "files" => {
-                let page_idx_str = msg_iter.next().unwrap_or("0");
-                let Ok(page_idx) = page_idx_str.parse::<usize>() else {
-                    unwrap!(msg.channel_id.say(&ctx.http, "`Invalid index`").await);
-                    return;
-                };
-                let mut out = String::from("```\n");
-                let mut remaining = 10usize;
-                let mut skip = remaining * page_idx;
-                let mut queue = VecDeque::from(vec![PathBuf::from(RUYI_FILES)]);
-
-                'main: while let Some(next) = queue.pop_front() {
-                    let mut read_dir = unwrap!(tokio::fs::read_dir(&next).await);
-                    while let Some(child) = unwrap!(read_dir.next_entry().await) {
-                        if child.path().is_dir() {
-                            queue.push_back(child.path());
-                        } else if skip > 0 {
-                            skip -= 1;
-                        } else {
-                            out.push_str(
-                                &child
-                                    .path()
-                                    .strip_prefix(RUYI_FILES)
-                                    .unwrap()
-                                    .to_string_lossy(),
-                            );
-                            out.push('\n');
-                            remaining -= 1;
-                            if remaining == 0 {
-                                break 'main;
-                            }
-                        }
-                    }
-                }
-
-                out.push_str("```");
-                unwrap!(msg.channel_id.say(&ctx.http, out).await);
             }
             "opt-in" => {
                 {
