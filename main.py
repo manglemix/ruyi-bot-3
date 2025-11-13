@@ -8,7 +8,7 @@ import traceback
 
 import discord
 
-from vllm_infer_interface import Request, TextFile, Thread, Message
+from vllm_infer_interface import Request, TextFile, Thread, Message, UserMessage, AssistantMessage
 
 
 guilds = set()
@@ -24,6 +24,20 @@ db_conn = sqlite3.connect("ruyi.sqlite")
 db_cursor = db_conn.cursor()
 
 db_cursor.execute("CREATE TABLE IF NOT EXISTS seen_messages (message_id INTEGER PRIMARY KEY) STRICT")
+
+
+def is_text_file(filename: str) -> bool:
+    return filename.endswith(".c") or \
+        filename.endswith(".cpp") or \
+        filename.endswith(".h") or \
+        filename.endswith(".py") or \
+        filename.endswith(".txt") or \
+        filename.endswith(".md") or \
+        filename.endswith(".html") or \
+        filename.endswith(".css") or \
+        filename.endswith(".js") or \
+        filename.endswith(".ts") or \
+        filename.endswith(".rs")
 
 
 class MyClient(discord.Client):
@@ -75,6 +89,7 @@ class MyClient(discord.Client):
         messages: list[discord.Message] = []
         i = -1
         unseen = False
+        entered_old = False
 
         async for message in thread.history(oldest_first=False):
             i += 1
@@ -83,11 +98,12 @@ class MyClient(discord.Client):
 
             messages.append(message)
 
-            try:
-                db_cursor.execute(f"INSERT INTO seen_messages (message_id) VALUES ({message.id})")
-                unseen = True
-            except sqlite3.IntegrityError:
-                pass
+            if not entered_old:
+                try:
+                    db_cursor.execute(f"INSERT INTO seen_messages (message_id) VALUES ({message.id})")
+                    unseen = True
+                except sqlite3.IntegrityError:
+                    entered_old = True
 
         if not unseen:
             return []
@@ -97,7 +113,18 @@ class MyClient(discord.Client):
 
         parsed_messages = []
         for msg in messages:
-            parsed = Message(author=msg.author.display_name, message=msg.content, image_urls=[], video_urls=[], text_files=[])
+            if msg.author == self.user:
+                parsed = AssistantMessage(message=msg.content, text_files=[])
+
+                for attachment in msg.attachments:
+                    if is_text_file(attachment.filename):
+                        content = (await attachment.read()).decode("utf-8")
+                        parsed.text_files.append(TextFile(content=content, filename=attachment.filename))
+
+                parsed_messages.append(parsed)
+                continue
+        
+            parsed = UserMessage(author=msg.author.display_name, message=msg.content, image_urls=[], video_urls=[], text_files=[])
 
             for attachment in msg.attachments:
                 if attachment.filename.endswith(".png") or \
@@ -111,17 +138,7 @@ class MyClient(discord.Client):
                         attachment.filename.endswith(".mkv"):
                     parsed.video_urls.append(attachment.proxy_url)
 
-                elif attachment.filename.endswith(".c") or \
-                        attachment.filename.endswith(".cpp") or \
-                        attachment.filename.endswith(".h") or \
-                        attachment.filename.endswith(".py") or \
-                        attachment.filename.endswith(".txt") or \
-                        attachment.filename.endswith(".md") or \
-                        attachment.filename.endswith(".html") or \
-                        attachment.filename.endswith(".css") or \
-                        attachment.filename.endswith(".js") or \
-                        attachment.filename.endswith(".ts") or \
-                        attachment.filename.endswith(".rs"):
+                elif is_text_file(attachment.filename):
                     content = (await attachment.read()).decode("utf-8")
                     parsed.text_files.append(TextFile(content=content, filename=attachment.filename))
 
