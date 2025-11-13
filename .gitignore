@@ -1,1 +1,4 @@
 .venv/
+.env
+guilds.txt
+ruyi.sqlite
