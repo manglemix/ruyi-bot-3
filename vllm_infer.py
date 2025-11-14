@@ -18,7 +18,7 @@ def generate_random_id(length=9):
 
 
 # llm = LLM(model="Qwen/Qwen3-VL-30B-A3B-Thinking")
-llm = LLM(model="cpatonn/Qwen3-VL-8B-Instruct-AWQ-4bit", gpu_memory_utilization=0.7, max_model_len=15000)
+llm = LLM(model="cpatonn/Qwen3-VL-8B-Instruct-AWQ-4bit", gpu_memory_utilization=0.7, max_model_len=15000, allowed_local_media_path="/tmp")
 sampling_params = SamplingParams(temperature=0.6, top_p=0.95, top_k=20, min_p=0, max_tokens=1024)
 
 tools = json.loads(open("tools.json", "r").read())
@@ -43,7 +43,7 @@ def web_search(url: str):
         browser_type = p.firefox
         browser = browser_type.launch()
         page = browser.new_page()
-        page.goto(url)
+        page.goto(url, wait_until="load")
 
         if is_text_file(url) and not url.endswith(".html"):
             result = {
@@ -56,7 +56,7 @@ def web_search(url: str):
             result = {
                 "type": "image_url",
                 "image_url": {
-                    "url": "/tmp/vllm_web_search.png"
+                    "url": "file:///tmp/vllm_web_search.png"
                 }
             }
         browser.close()
@@ -81,7 +81,7 @@ for thread in request.threads:
             content: list[Any] = [
                 {
                     "type": "text",
-                    "text": json.dumps({ "username": msg.author, "message": msg.message })
+                    "text": msg.message
                 }
             ]
             
@@ -114,7 +114,6 @@ for thread in request.threads:
         outputs = llm.chat(messages, sampling_params=sampling_params, tools=tools)
         output = outputs[0].outputs[0].text.strip()
 
-
         try:
             # Sometimes is produced
             tool_output = output.removeprefix("<tool_call>").removesuffix("</tool_call>")
@@ -133,7 +132,7 @@ for thread in request.threads:
             messages.append(
                 {
                     "role": "tool",
-                    "content": content,
+                    "content": [content],
                     "tool_call_id": generate_random_id(),
                 }
             )

@@ -117,7 +117,6 @@ pydantic-extra-types==2.10.6
 pydantic_core==2.41.5
 pyee==13.0.0
 Pygments==2.19.2
-pyjson5==2.0.0
 pytest==8.4.2
 pytest-base-url==2.1.0
 pytest-playwright==0.7.1
