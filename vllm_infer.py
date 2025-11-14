@@ -21,7 +21,12 @@ response = Response(thread_responses=[])
 
 
 for thread in request.threads:
-    messages = []
+    messages = [
+        {
+            "role": "system",
+            "content": system_message
+        }
+    ]
 
     for msg in thread.messages:
         if msg.msg_type == "user":
@@ -69,6 +74,7 @@ for thread in request.threads:
                     "content": output,
                 }
             )
+            raise Exception("No tools")
             # tool_answers = [
             #     tool_functions[call["name"]](**call["arguments"]) for call in tool_calls
             # ]

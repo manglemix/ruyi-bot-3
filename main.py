@@ -130,6 +130,7 @@ class MyClient(discord.Client):
                     await last_message.channel.send(chunk)
         
         db_conn.commit()
+        print("DONE")
         await self.exit()
 
     async def per_thread(self, thread: discord.Thread) -> tuple[list[Message], Message]:
