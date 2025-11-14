@@ -95,7 +95,6 @@ class MyClient(discord.Client):
                 )
                 last_messages.append(last_message)
             
-            print(request)
             if len(request.threads) == 0:
                 await self.exit()
                 return
@@ -106,12 +105,11 @@ class MyClient(discord.Client):
         process = await asyncio.create_subprocess_exec(
             "python",
             "vllm_infer.py",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE
+            stdin=asyncio.subprocess.PIPE
         )
-        stdout, _stderr = await process.communicate(request.model_dump_json().encode("utf-8"))
-        print(stdout)
-        response = Response.model_validate_json(stdout)
+        await process.communicate(request.model_dump_json().encode("utf-8"))
+        stdout_str = open("/tmp/vllm_infer.json", "r").read()
+        response = Response.model_validate_json(stdout_str)
 
         for response, last_message in zip(response.thread_responses, last_messages):
             chunks = chunker(response.message)
@@ -132,6 +130,7 @@ class MyClient(discord.Client):
                     await last_message.channel.send(chunk)
         
         db_conn.commit()
+        await self.exit()
 
     async def per_thread(self, thread: discord.Thread) -> tuple[list[Message], Message]:
         messages: list[discord.Message] = []

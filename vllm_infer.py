@@ -81,4 +81,4 @@ for thread in request.threads:
             break
 
 
-print(response.model_dump_json())
+open("/tmp/vllm_infer.json", "w").write(response.model_dump_json())
