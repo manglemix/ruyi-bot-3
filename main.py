@@ -2,13 +2,16 @@ from dotenv import load_dotenv
 
 load_dotenv(".env")
 
+import asyncio
+import io
 import os
 import sqlite3
 import traceback
 
 import discord
+import semchunk
 
-from vllm_infer_interface import Request, TextFile, Thread, Message, UserMessage, AssistantMessage
+from vllm_infer_interface import Request, Response, TextFile, Thread, Message, UserMessage, AssistantMessage
 
 
 guilds = set()
@@ -25,6 +28,7 @@ db_cursor = db_conn.cursor()
 
 db_cursor.execute("CREATE TABLE IF NOT EXISTS seen_messages (message_id INTEGER PRIMARY KEY) STRICT")
 
+chunker = semchunk.chunkerify(lambda text: len(text), 2000)
 
 def is_text_file(filename: str) -> bool:
     return filename.endswith(".c") or \
@@ -41,19 +45,25 @@ def is_text_file(filename: str) -> bool:
 
 
 class MyClient(discord.Client):
+    async def exit(self):
+        if "NO_EXIT" in os.environ:
+            print("NO_EXIT environment var is present. Not exiting.")
+        else:
+            await self.close()
+            
     async def on_ready(self):
         print(f'Logged on as {self.user} for guilds: {guilds}')
 
         try:
             await self.task()
-            print("DONE")
+            # print("DONE")
         except Exception:
             traceback.print_exc()
         
-        if "NO_EXIT" in os.environ:
-            print("NO_EXIT environment var is present. Not exiting.")
-        else:
-            await self.close()
+        # if "NO_EXIT" in os.environ:
+        #     print("NO_EXIT environment var is present. Not exiting.")
+        # else:
+        #     await self.close()
 
     async def on_message(self, message: discord.Message):
         if "MSG_TRACK" in os.environ:
@@ -74,19 +84,58 @@ class MyClient(discord.Client):
                 continue
             
             request = Request(threads=[])
+            last_messages = []
 
             for thread in await guild.active_threads():
-                messages = await self.per_thread(thread)
+                messages, last_message = await self.per_thread(thread)
                 if len(messages) == 0:
                     continue
                 request.threads.append(
                     Thread(messages=messages)
                 )
-
+                last_messages.append(last_message)
+            
+            print(request)
+            if len(request.threads) == 0:
+                await self.exit()
+                return
+            
+            asyncio.create_task(self.vllm_infer(request, last_messages))
                 
-    
-    async def per_thread(self, thread: discord.Thread) -> list[Message]:
+    async def vllm_infer(self, request: Request, last_messages: list[discord.Message]):
+        process = await asyncio.create_subprocess_exec(
+            "python",
+            "vllm_infer.py",
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE
+        )
+        stdout, _stderr = await process.communicate(request.model_dump_json().encode("utf-8"))
+        print(stdout)
+        response = Response.model_validate_json(stdout)
+
+        for response, last_message in zip(response.thread_responses, last_messages):
+            chunks = chunker(response.message)
+            files = [discord.File(io.BytesIO(file.content.encode("utf-8")), file.filename) for file in response.text_files]
+
+            for i, tmp_chunk in enumerate(chunks):
+                # For type checker
+                chunk: str = tmp_chunk # type: ignore
+
+                if i == 0:
+                    if i == len(chunks) - 1:
+                        await last_message.reply(chunk, files=files)
+                    else:
+                        await last_message.reply(chunk)
+                elif i == len(chunks) - 1:
+                    await last_message.channel.send(chunk, files=files)
+                else:
+                    await last_message.channel.send(chunk)
+        
+        db_conn.commit()
+
+    async def per_thread(self, thread: discord.Thread) -> tuple[list[Message], Message]:
         messages: list[discord.Message] = []
+        last_message = None
         i = -1
         unseen = False
         entered_old = False
@@ -95,6 +144,8 @@ class MyClient(discord.Client):
             i += 1
             if message.author == self.user or message.is_system() or i + 1 >= thread.message_count or self.user not in message.mentions:
                 continue
+            if last_message is None:
+                last_message = message
 
             messages.append(message)
 
@@ -106,7 +157,7 @@ class MyClient(discord.Client):
                     entered_old = True
 
         if not unseen:
-            return []
+            return ([], last_message) # type: ignore
 
         # After reversal, the messages will be oldest to newest (chronological)
         messages.reverse()
@@ -144,7 +195,7 @@ class MyClient(discord.Client):
 
             parsed_messages.append(parsed)
 
-        return parsed_messages
+        return (parsed_messages, last_message) # type: ignore
 
 
 intents = discord.Intents.default()

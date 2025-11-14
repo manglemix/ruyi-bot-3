@@ -31,3 +31,13 @@ class Thread(BaseModel):
 
 class Request(BaseModel):
     threads: list[Thread]
+
+
+class ThreadResponse(BaseModel):
+    message: str
+    text_files: list[TextFile]
+    image_prompts: list[str]
+
+
+class Response(BaseModel):
+    thread_responses: list[ThreadResponse]

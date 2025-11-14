@@ -2,3 +2,5 @@
 .env
 guilds.txt
 ruyi.sqlite
+__pycache__
+ruyi.sqlite-journal
