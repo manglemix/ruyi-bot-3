@@ -1,16 +1,27 @@
+from dataclasses import dataclass
 from typing import Any
 from vllm import LLM, SamplingParams
 import sys
-from vllm_infer_interface import Request, Response, ThreadResponse
-import pyjson5
+from vllm_infer_interface import Request, Response, ThreadResponse, is_text_file
+import json
 from datetime import datetime
+from playwright.sync_api import sync_playwright
+from vllm.assets.image import ImageAsset
+import string
+import random
+
+
+def generate_random_id(length=9):
+    characters = string.ascii_letters + string.digits
+    random_id = "".join(random.choice(characters) for _ in range(length))
+    return random_id
 
 
 # llm = LLM(model="Qwen/Qwen3-VL-30B-A3B-Thinking")
 llm = LLM(model="cpatonn/Qwen3-VL-8B-Instruct-AWQ-4bit", gpu_memory_utilization=0.7, max_model_len=15000)
 sampling_params = SamplingParams(temperature=0.6, top_p=0.95, top_k=20, min_p=0, max_tokens=1024)
 
-tools = pyjson5.loads(open("tools.jsonc", "r").read())
+tools = json.loads(open("tools.json", "r").read())
 
 system_message = open("system_msg.txt", "r").read()
 system_message += f"\nThe current datetime is {datetime.now().isoformat()}"
@@ -18,6 +29,43 @@ system_message += f"\nThe current datetime is {datetime.now().isoformat()}"
 json_data = sys.stdin.readline().strip()
 request = Request.model_validate_json(json_data)
 response = Response(thread_responses=[])
+
+
+@dataclass
+class WebSearchResult:
+    url: str | None
+    text: str | None
+
+
+def web_search(url: str):
+    result = None
+    with sync_playwright() as p:
+        browser_type = p.firefox
+        browser = browser_type.launch()
+        page = browser.new_page()
+        page.goto(url)
+
+        if is_text_file(url) and not url.endswith(".html"):
+            result = {
+                "type": "text",
+                "text": page.content()
+            }
+        else:
+            page.screenshot(path='/tmp/vllm_web_search.png')
+
+            result = {
+                "type": "image_url",
+                "image_url": {
+                    "url": "/tmp/vllm_web_search.png"
+                }
+            }
+        browser.close()
+    return result
+
+
+tool_functions = {
+    "web_search": web_search
+}
 
 
 for thread in request.threads:
@@ -33,7 +81,7 @@ for thread in request.threads:
             content: list[Any] = [
                 {
                     "type": "text",
-                    "text": pyjson5.dumps({ "username": msg.author, "message": msg.message })
+                    "text": json.dumps({ "username": msg.author, "message": msg.message })
                 }
             ]
             
@@ -60,13 +108,18 @@ for thread in request.threads:
             messages.append({ "role": "assistant", "content": msg.message })
 
     thread_response = ThreadResponse(message="", text_files=[], image_prompts=[])
+    print(messages)
 
     while True:
         outputs = llm.chat(messages, sampling_params=sampling_params, tools=tools)
         output = outputs[0].outputs[0].text.strip()
 
+
         try:
-            tool_calls = pyjson5.loads(output)
+            # Sometimes is produced
+            tool_output = output.removeprefix("<tool_call>").removesuffix("</tool_call>")
+            print(tool_output)
+            tool_call = json.loads(tool_output)
 
             messages.append(
                 {
@@ -74,14 +127,19 @@ for thread in request.threads:
                     "content": output,
                 }
             )
-            raise Exception("No tools")
-            # tool_answers = [
-            #     tool_functions[call["name"]](**call["arguments"]) for call in tool_calls
-            # ]
+            
+            content = tool_functions[tool_call["name"]](**tool_call["arguments"])
 
-        except pyjson5.Json5DecoderException:
-            # output = output.replace('\\', '\\\\')
-            # open("test.json", "w").write(output)
+            messages.append(
+                {
+                    "role": "tool",
+                    "content": content,
+                    "tool_call_id": generate_random_id(),
+                }
+            )
+
+        except json.JSONDecodeError:
+            print(output)
             thread_response.message = output
             response.thread_responses.append(thread_response)
             break

@@ -41,3 +41,17 @@ class ThreadResponse(BaseModel):
 
 class Response(BaseModel):
     thread_responses: list[ThreadResponse]
+
+
+def is_text_file(filename: str) -> bool:
+    return filename.endswith(".c") or \
+        filename.endswith(".cpp") or \
+        filename.endswith(".h") or \
+        filename.endswith(".py") or \
+        filename.endswith(".txt") or \
+        filename.endswith(".md") or \
+        filename.endswith(".html") or \
+        filename.endswith(".css") or \
+        filename.endswith(".js") or \
+        filename.endswith(".ts") or \
+        filename.endswith(".rs")

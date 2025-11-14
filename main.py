@@ -11,7 +11,7 @@ import traceback
 import discord
 import semchunk
 
-from vllm_infer_interface import Request, Response, TextFile, Thread, Message, UserMessage, AssistantMessage
+from vllm_infer_interface import Request, Response, TextFile, Thread, Message, UserMessage, AssistantMessage, is_text_file
 
 
 guilds = set()
@@ -29,19 +29,6 @@ db_cursor = db_conn.cursor()
 db_cursor.execute("CREATE TABLE IF NOT EXISTS seen_messages (message_id INTEGER PRIMARY KEY) STRICT")
 
 chunker = semchunk.chunkerify(lambda text: len(text), 2000)
-
-def is_text_file(filename: str) -> bool:
-    return filename.endswith(".c") or \
-        filename.endswith(".cpp") or \
-        filename.endswith(".h") or \
-        filename.endswith(".py") or \
-        filename.endswith(".txt") or \
-        filename.endswith(".md") or \
-        filename.endswith(".html") or \
-        filename.endswith(".css") or \
-        filename.endswith(".js") or \
-        filename.endswith(".ts") or \
-        filename.endswith(".rs")
 
 
 class MyClient(discord.Client):
@@ -86,7 +73,7 @@ class MyClient(discord.Client):
             request = Request(threads=[])
             last_messages = []
 
-            for thread in await guild.active_threads():
+            for thread in guild.threads:
                 messages, last_message = await self.per_thread(thread)
                 if len(messages) == 0:
                     continue
@@ -108,6 +95,10 @@ class MyClient(discord.Client):
             stdin=asyncio.subprocess.PIPE
         )
         await process.communicate(request.model_dump_json().encode("utf-8"))
+        if process.returncode != 0:
+            print("FAILED")
+            await self.exit()
+            return
         stdout_str = open("/tmp/vllm_infer.json", "r").read()
         response = Response.model_validate_json(stdout_str)
 

@@ -7,4 +7,11 @@ You can call any number of tools before responding, but responding to the user w
 
 # Style Guide
 When responding to the user, speak concisely and professionally.
-When calling a tool, you can only respond using one valid JSON object.
+When calling a tool, you can only respond using one valid JSON object. Do not include XML tags.
+Example:
+{
+    "name": "web_search",
+    "arguments": {
+        "url": "https://www.google.com/"
+    }
+}

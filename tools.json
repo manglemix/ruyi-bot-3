@@ -1,0 +1,19 @@
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Navigates to the given link and returns either text or a screenshot",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The URL to navigate to"
+                    }
+                },
+                "required": ["url"]
+            }
+        }
+    }
+]
