@@ -133,7 +133,14 @@ class MyClient(discord.Client):
 
         async for message in thread.history(oldest_first=False):
             i += 1
-            if message.author == self.user or message.is_system() or i + 1 >= thread.message_count or self.user not in message.mentions:
+            # print(message.content)
+            mentions_me = False
+            for user in message.mentions:
+                if user.id == self.user.id:
+                    mentions_me = True
+                    break
+            
+            if message.author == self.user or message.is_system() or not mentions_me:
                 continue
             if last_message is None:
                 last_message = message
@@ -156,7 +163,7 @@ class MyClient(discord.Client):
         parsed_messages = []
         for msg in messages:
             if msg.author == self.user:
-                parsed = AssistantMessage(message=msg.content, text_files=[])
+                parsed = AssistantMessage(message=msg.clean_content, text_files=[])
 
                 for attachment in msg.attachments:
                     if is_text_file(attachment.filename):
@@ -166,7 +173,7 @@ class MyClient(discord.Client):
                 parsed_messages.append(parsed)
                 continue
         
-            parsed = UserMessage(author=msg.author.display_name, message=msg.content, image_urls=[], video_urls=[], text_files=[])
+            parsed = UserMessage(author=msg.author.display_name, message=msg.clean_content, image_urls=[], video_urls=[], text_files=[])
 
             for attachment in msg.attachments:
                 if attachment.filename.endswith(".png") or \

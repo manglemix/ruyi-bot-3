@@ -18,8 +18,8 @@ def generate_random_id(length=9):
 
 
 # llm = LLM(model="Qwen/Qwen3-VL-30B-A3B-Thinking")
-llm = LLM(model="cpatonn/Qwen3-VL-8B-Instruct-AWQ-4bit", gpu_memory_utilization=0.7, max_model_len=15000, allowed_local_media_path="/tmp")
-sampling_params = SamplingParams(temperature=0.6, top_p=0.95, top_k=20, min_p=0, max_tokens=1024)
+llm = LLM(model="cpatonn/Qwen3-VL-8B-Thinking-AWQ-4bit", gpu_memory_utilization=0.7, max_model_len=15000, allowed_local_media_path="/tmp")
+sampling_params = SamplingParams(temperature=0.6, top_p=0.95, top_k=20, min_p=0, max_tokens=None)
 
 tools = json.loads(open("tools.json", "r").read())
 
@@ -43,7 +43,15 @@ def web_search(url: str):
         browser_type = p.firefox
         browser = browser_type.launch()
         page = browser.new_page()
-        page.goto(url, wait_until="load")
+        try:
+            page.goto(url, wait_until="load")
+        except Exception as e:
+            print(e)
+            browser.close()
+            return {
+                "type": "text",
+                "text": "Failed to load URL"
+            }
 
         if is_text_file(url) and not url.endswith(".html"):
             result = {
@@ -113,6 +121,10 @@ for thread in request.threads:
     while True:
         outputs = llm.chat(messages, sampling_params=sampling_params, tools=tools)
         output = outputs[0].outputs[0].text.strip()
+        think_index = output.find("</think>")
+
+        if think_index != -1:
+            output = output[think_index + len("</think>")::].strip()
 
         try:
             # Sometimes is produced

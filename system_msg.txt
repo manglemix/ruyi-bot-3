@@ -10,7 +10,7 @@ to reduce the amount of back and forth that has to happen.
 
 # Style Guide
 When responding to the user, speak concisely and professionally.
-When calling a tool, you can only respond using one valid JSON object. Do not include XML tags.
+When calling a tool, you can only respond using one valid JSON object.
 Example:
 {
     "name": "web_search",
